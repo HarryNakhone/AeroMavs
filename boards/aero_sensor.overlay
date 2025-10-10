@@ -1,0 +1,16 @@
+&spi2{
+
+    status = "okay";
+    pinctrl-0 = <&spi2_nss_pb12 &spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+    pinctrl-names = "default";
+    cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;
+
+    icm20649: icm20649@0{
+        compatible = "vnd,spi-device";
+        reg= <0>;
+        label = "ICM";
+        spi-max-frequency = <7000000>;       
+        spi-cpol;                            
+        spi-cpha; 
+    };
+};

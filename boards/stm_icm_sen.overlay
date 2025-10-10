@@ -1,0 +1,32 @@
+/*
+ * Generic sensor device tree overlay for ICM20649
+ * Uses Zephyr's generic sensor framework
+ */
+
+&spi1 {
+    status = "okay";
+    
+    motion_sensor@0 {
+        compatible = "generic,sensor";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        
+        /* Interrupt GPIO pin - adjust according to your hardware */
+        int-gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
+        
+        /* Generic sensor properties */
+        status = "okay";
+        
+        /* Sensor type definitions */
+        sensor-type = "motion";
+        channels = "accel-x", "accel-y", "accel-z", 
+                  "gyro-x", "gyro-y", "gyro-z", 
+                  "temperature";
+        
+        /* Default sensor configuration */
+        accel-hz = <100>;
+        gyro-hz = <100>;
+        accel-fs = <16>;  /* 16g */
+        gyro-fs = <2000>; /* 2000 dps */
+    };
+};
