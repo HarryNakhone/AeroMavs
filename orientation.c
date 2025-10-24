@@ -1,11 +1,10 @@
 // Basic demo for accelerometer readings from Adafruit ICM20649
-// The first issue - when there are a lotta vibrations, possible, the accelerometer readings are not very accurate.
-// ascent data is imp, 
+
 #include <Adafruit_ICM20649.h>
 #include <Adafruit_Sensor.h>
 #include <MadgwickAHRS.h>
 #include <Wire.h>
-#include <math.h>
+#include "SavitzkyGolayFilter.h"
 
 
 Adafruit_ICM20649 icm;
@@ -31,25 +30,17 @@ enum class SensorType{
   Accel
 };
 
-// Savitzky-Golay filter parameters
-#define SG_WINDOW_SIZE 7    // Window size (must be odd, 5, 7, 9, etc.)
-#define SG_POLY_ORDER 2     // Polynomial order (typically 2 or 3)
-#define SG_BUFFER_SIZE 20   // Circular buffer size
-
-// Savitzky-Golay filter structure
-struct SavitzkyGolayFilter {
-  float buffer[SG_BUFFER_SIZE];
-  int head;
-  int size;
-  bool isFull;
-};
-
-// Global filter instances for each axis
-SavitzkyGolayFilter sg_filter_x;
-SavitzkyGolayFilter sg_filter_y;
-SavitzkyGolayFilter sg_filter_z;
-
 Madgwick filter;
+
+// Savitzky-Golay filter parameters
+#define SG_WINDOW_SIZE 7    // Window size (must be odd, 3-25)
+#define SG_ORDER 2          // Polynomial order (1-5)
+#define SG_DERIVATIVE 0     // 0 = Smooth, 1 = First Derivative, 2 = Second Derivative
+
+// Initialize Savitzky-Golay filters for each axis
+SavLayFilter sg_filter_x(SG_WINDOW_SIZE, SG_ORDER, SG_DERIVATIVE);
+SavLayFilter sg_filter_y(SG_WINDOW_SIZE, SG_ORDER, SG_DERIVATIVE);
+SavLayFilter sg_filter_z(SG_WINDOW_SIZE, SG_ORDER, SG_DERIVATIVE);
 
 float gyro_biases [3] ={0};
 float accel_biases [3] ={0};
@@ -184,71 +175,6 @@ void calibrateGyro(uint16_t n_samples = 1000, uint16_t sample_delay_ms = 10) {
   Serial.println(gyro_biases[2]);
 }
 
-// Initialize Savitzky-Golay filter
-void initSavitzkyGolayFilter(SavitzkyGolayFilter* filter) {
-  filter->head = 0;
-  filter->size = 0;
-  filter->isFull = false;
-  for (int i = 0; i < SG_BUFFER_SIZE; i++) {
-    filter->buffer[i] = 0.0;
-  }
-}
-
-// Add new sample to circular buffer
-void addSample(SavitzkyGolayFilter* filter, float sample) {
-  filter->buffer[filter->head] = sample;
-  filter->head = (filter->head + 1) % SG_BUFFER_SIZE;
-  
-  if (filter->size < SG_BUFFER_SIZE) {
-    filter->size++;
-  } else {
-    filter->isFull = true;
-  }
-}
-
-// Get sample from buffer at relative index (0 = most recent)
-float getSample(SavitzkyGolayFilter* filter, int index) {
-  if (index >= filter->size) return 0.0;
-  
-  int actualIndex = (filter->head - 1 - index + SG_BUFFER_SIZE) % SG_BUFFER_SIZE;
-  return filter->buffer[actualIndex];
-}
-
-// Savitzky-Golay coefficients for window size 7, polynomial order 2
-// These coefficients are pre-calculated for efficiency
-const float sg_coefficients[SG_WINDOW_SIZE] = {
-  -0.142857, -0.071429, 0.0, 0.142857, 0.285714, 0.428571, 0.571429
-};
-
-// Apply Savitzky-Golay filter
-float applySavitzkyGolayFilter(SavitzkyGolayFilter* filter) {
-  if (filter->size < SG_WINDOW_SIZE) {
-    // Not enough data, return the most recent sample
-    return getSample(filter, 0);
-  }
-  
-  float result = 0.0;
-  for (int i = 0; i < SG_WINDOW_SIZE; i++) {
-    result += sg_coefficients[i] * getSample(filter, i);
-  }
-  
-  return result;
-}
-
-// Process accelerometer data through Savitzky-Golay filter
-void processAccelerometerData(float ax_raw, float ay_raw, float az_raw, 
-                             float* ax_filtered, float* ay_filtered, float* az_filtered) {
-  // Add new samples to buffers
-  addSample(&sg_filter_x, ax_raw);
-  addSample(&sg_filter_y, ay_raw);
-  addSample(&sg_filter_z, az_raw);
-  
-  // Apply Savitzky-Golay filter
-  *ax_filtered = applySavitzkyGolayFilter(&sg_filter_x);
-  *ay_filtered = applySavitzkyGolayFilter(&sg_filter_y);
-  *az_filtered = applySavitzkyGolayFilter(&sg_filter_z);
-}
-
 
 
 void setup(void) {
@@ -329,11 +255,6 @@ void setup(void) {
 
   filter.begin(100);
 
-  // Initialize Savitzky-Golay filters
-  initSavitzkyGolayFilter(&sg_filter_x);
-  initSavitzkyGolayFilter(&sg_filter_y);
-  initSavitzkyGolayFilter(&sg_filter_z);
-
   microsPerReading = 1000000 / 100;
   microsPrevious = micros();
 
@@ -380,8 +301,13 @@ void loop() {
   float az_raw = zScale * (accel.acceleration.z - zOffset);
 
   // Apply Savitzky-Golay filter to smooth out vibrations
-  float ax, ay, az;
-  processAccelerometerData(ax_raw, ay_raw, az_raw, &ax, &ay, &az);
+  float ax = sg_filter_x.update(ax_raw);
+  float ay = sg_filter_y.update(ay_raw);
+  float az = sg_filter_z.update(az_raw);
+  
+  // Debug output - uncomment to see raw vs filtered data
+  // Serial.print("Raw: "); Serial.print(ax_raw); Serial.print(","); Serial.print(ay_raw); Serial.print(","); Serial.println(az_raw);
+  // Serial.print("Filtered: "); Serial.print(ax); Serial.print(","); Serial.print(ay); Serial.print(","); Serial.println(az);
 
     // Ax = xScale* (ax - xOffset);
     // Ay = yScale* (ay - yOffset);
