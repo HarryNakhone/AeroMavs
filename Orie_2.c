@@ -6,10 +6,10 @@
 #include <Wire.h>
 
 
-
 #define ICM_ADDR 0x68
 #define REG_GYRO_CONFIG 0x01
 #define REG_ACCEL_CONFIG 0x14
+
 
 
 Adafruit_ICM20649 icm;
@@ -43,6 +43,27 @@ float accel_biases [3] ={0};
 struct Calibrated_g calibrated_gyro ={0};
 struct Calibrated_a calibrated_acce ={0};
 
+// float Ax;
+// float Ay;
+// float Az;
+
+// float xMax= 1.01;
+// float xMin= -0.98;
+
+// float yMax= 0.99;
+// float yMin= -1.01;
+
+// float zMax= 1.01;
+// float zMin= -1.00 ;
+
+// float xOffset = (xMax + xMin)/2;
+// float yOffset = (yMax + yMin)/2;
+// float zOffset = (zMax + zMin)/2;
+
+// float xScale = 2/(xMax - xMin);
+// float yScale = 2/(yMax - yMin);
+// float zScale = 2/(zMax - zMin);
+
 
 float xOffset = 0.07;
 float yOffset = -0.08;
@@ -73,9 +94,9 @@ void enableDLPF(){
   uint8_t accel_conf = readRegister(REG_ACCEL_CONFIG);
 
   // gyro_conf =   0xb00100101
-  // accel_conf =  0x00100101  
-  gyro_conf =   0x25;
-  accel_conf =  0x25;
+  // accel_conf =  0x00100101 0000 0000 
+  gyro_conf =   0x0D;
+  accel_conf =  0x0D;
 
   writeRegister(REG_GYRO_CONFIG, gyro_conf);
   writeRegister(REG_ACCEL_CONFIG, accel_conf);
@@ -150,6 +171,7 @@ void calibrateAccelerometer() {
   // xScale = x_scale;
   // yScale = y_scale;
   // zScale = z_scale;
+
   Serial.println("Accelerometer calibration done!");
 }
 
@@ -200,7 +222,7 @@ void setup(void) {
   }
 
   Serial.println("ICM20649 Found!");
-  icm.setAccelRange(ICM20649_ACCEL_RANGE_30_G);
+  icm.setAccelRange(ICM20649_ACCEL_RANGE_16_G);
   Serial.print("Accelerometer range set to: ");
   switch (icm.getAccelRange()) {
   case ICM20649_ACCEL_RANGE_4_G:
@@ -234,7 +256,7 @@ void setup(void) {
     break;
   }
 
-  icm.setAccelRateDivisor(0);
+  icm.setAccelRateDivisor(10);  //10
   uint16_t accel_divisor = icm.getAccelRateDivisor();
   float accel_rate = 1125 / (1.0 + accel_divisor);
 
@@ -245,7 +267,7 @@ void setup(void) {
   Serial.print("Accelerometer data rate (Hz) is approximately: ");
   Serial.println(accel_rate);
 
-  icm.setGyroRateDivisor(0);
+  icm.setGyroRateDivisor(10);  //10
   uint8_t gyro_divisor = icm.getGyroRateDivisor();
   float gyro_rate = 1125 / (1.0 + gyro_divisor);
 
@@ -256,12 +278,12 @@ void setup(void) {
   Serial.println();
  //calibrateAccelerometer();
 
-  enableDLPF();
+  enableDLPF(); /// Enable
   calibrateGyro();
 
-  filter.begin(1000);
+  filter.begin(100);
 
-  microsPerReading = 1000000 / 1000;
+  microsPerReading = 1000000 / 100;
   microsPrevious = micros();
 
 }
@@ -303,7 +325,7 @@ void loop() {
   if (microsNow - microsPrevious >= microsPerReading){
     microsPrevious = microsNow;
 
-  icm.getEvent(&accel, &gyro, &temp); ///get sensor data
+    icm.getEvent(&accel, &gyro, &temp); ///get sensor data
 
   float ax_raw = xScale * (accel.acceleration.x - xOffset);
   float ay_raw = yScale * (accel.acceleration.y - yOffset);
@@ -338,12 +360,11 @@ void loop() {
     // ax_r = Ax * 9.81;
     // ay_r = Ay * 9.81;
     // az_r = Az * 9.81;
-    
-    filter.updateIMU(gx_dps, gy_dps, gz_dps, ax, ay, az);
+    filter.updateIMU(gx_dps, gy_dps, gz_dps, 0, 0, 0);
 
-     roll = filter.getRoll();
-     pitch = filter.getPitch();
-     heading = filter.getYaw();
+    roll = filter.getRoll();
+    pitch = filter.getPitch();
+    heading = filter.getYaw();
 
     Serial.print(roll);
     Serial.print(",");
@@ -355,6 +376,5 @@ void loop() {
     //microsPrevious = microsPrevious + microsPerReading;
 
   }
-
 
 }
